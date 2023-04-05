@@ -1,0 +1,34 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+      
+spring:
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3307/security?serverTimezone=Asia/Seoul
+    username: 설치시 아이디
+    password: 설치시 패스워드
+    
+  mvc:
+    view:
+      prefix: /templates/
+      suffix: .mustache
+
+  jpa:
+    hibernate:
+      ddl-auto: update #create update none
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    show-sql: true
+
+  security:    oauth2:      client:        registration:          google: # /oauth2/authorization/google 이 주소를 동작하게 한다.
+            client-id: 구글 API 콘솔에서 확인 할 것
+            client-secret: 구글 API 콘솔에서 확인 할 것
+            scope:            - email
+            - profile
+                  

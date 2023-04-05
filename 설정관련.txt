@@ -1,0 +1,327 @@
+1. TOOL 
+- SpringBoot 4.1.0
+- open JDK 11
+- MySql 8.0.17 3307포트
+   ID : 설치시 지정한 것
+   PW : 설치시 지정한 것
+   DataBase security 
+   Table user
+- spring security
+  spring jpa
+  spring web
+  mysql jdbc
+  Lombok
+  mustache
+  DevTool
+
+OAuth 사용을 위한 dependency  
+<dependency>
+<groupId>org.springframework.boot</groupId>
+<artifactId>spring-boot-starter-oauth2-client</artifactId>
+</dependency>
+  
+=====================================================================================================
+구글 로그인을 위한 설정
+1. 구글 API로 이동
+
+2. 새 프로젝트 생성
+
+3. OAuth 동의 화면
+   - User Type : 외부 선택
+   - application 이름 등록 : ex springboot-oauth=google
+4. 사용자 인증정보
+   - 사용자 인증 정보 만들기
+      * OAuth 클라이언트 ID 클릭 선택
+         -- 에플리케이션 유형 : 웹 애플리케이션 선택 (원하는 프로그램 유형을 선택한다)
+         -- 이름은 적당한 이름으로 등록 : ex springboot-oauth=google
+         -- 승인된 리다이렉션 URI는 고정된 것임 -> (이부분은 고정임 /login/oauth2/code/google) - 다른 주소 사용불가함
+            http://localhost:8080/login/oauth2/code/google (인증이 되었다는 코드를 돌려주는 URL임)
+            생성을 하면 
+			클라이언트 ID : 구글 API 콘솔로 들어가서 확인해보세요
+			클라이언트 비밀번호 : 
+======================================================================================================
+부트에서 셋팅
+1. dependency 추가
+	OAuth 사용을 위한 dependency  
+	<dependency>
+	<groupId>org.springframework.boot</groupId>
+	<artifactId>spring-boot-starter-oauth2-client</artifactId>
+	</dependency>
+2. application.properties or application.yml 에 아래 내용 추가
+	security.oauth2.clienct.registration 이라고 타이핑하고 그다음 아래내용을 등록
+
+   security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: 구글 API 콘솔에서 확인해 보세요
+            client-secret: 
+            scope:
+            - email
+            - profile
+            
+3. 그 다음  view단에 google 로그인 창을 위한 링크를 걸어주는데 이것도 고정이다 왜냐하면 OAuth2 라이브러리가 이 주소로만 통신된다
+   <a href="/oauth2/authorization/google"> 구글 로그인</a>
+4. 그 다음 실행해서 확인해 보면 링크를 걸었음에도 불구하고 404 에러 발생함
+   이유는 해당 주소에 대한 맵핑이 아무것도 없어서 임
+   
+5. 이것을 어떻게 하면 되냐면?
+   - SecurityConfig 파일을 열어서
+     제일 끝에
+     .and()
+			.oauth2Login()
+			.loginPage("/loginForm"); //여기까지만 하면 구글 로그인 기능은 완료되나 구글 로그인이 완료된뒤 권한등 사용자 정보를 가져오기위해 후처리가 필요함
+6. 후처리를 위한 등록
+	- SecurityConfig 파일을 열어서
+		.and()
+			.oauth2Login()
+			.loginPage("/loginForm"); //여기까지만 하면 구글 로그인 기능은 완료되나 구글 로그인이 완료된뒤 권한에 대한 후처리가 필요함 왜냐하면 여기까지는 권한 같은 것들이 session에 등록 되어 있지 않음
+			// 구글 로그인이 완료된 뒤에 후처리가 필요함 1. 코드받기(인증) 2.엑세스 토큰(권한) 3.사용자 프로필 정보를 가져오고 
+			// 4-1 그 정보를 토대로 회원가입을 자동으로 진행시키기도 함
+			// 4-2 (이메일,전화번호,이름,아이디)쇼핑몰 -> (집주소), 백화점 -> VIP등급
+			// 구글 로그인이 완료된 뒤의 후처리로 코드를 받는 것이 아니라 (액세스토큰+사용자프로필을 한방에 받게 된다)
+			// 이것이 OAuth의 개편함이다
+			.userInfoEndpoint()
+			.userService(null); // 처음에는 null을 리턴 시킨다
+			// .userService(principalOauth2UserService); // 추후 Session에 등록 처리를 위한 후처리를 위한 principalOauth2UserService 를 작성해서 @Service로 등록해야 함
+
+7. principalOauth2UserService 후처리를 서비스 생성 
+
+    @Service
+	public class PrincipalOauth2UserService extends DefaultOAuth2UserService {
+	
+	@Autowired //회원 강제 가입을 위한 DI
+	private UserRepository userRepository;
+	
+	// 구글로 부터 받은 userRequest 데이터에 대한 후처리되는 함수
+	@Override
+	public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {  //loadUser() 함수에서 후처리 로직을 작성
+		System.out.println("PrincipalOauth2UserService의 loadUser()의 userRequest : " + userRequest);
+		System.out.println("PrincipalOauth2UserService의 loadUser()의 userRequest의 getClientRegistration : " + userRequest.getClientRegistration()); // getClientRegistration 정보의 registrationId로 어떤 OAuth로 로그인 했는지 확인가능함 구글인지 페이스북인지 등
+		System.out.println("PrincipalOauth2UserService의 loadUser()의 userRequest의 getAccessToken : " + userRequest.getAccessToken());
+		System.out.println("PrincipalOauth2UserService의 super.loadUser(userRequest)의 getAuthorities : " + super.loadUser(userRequest).getAuthorities());
+		return super.loadUser(userRequest);
+	}
+
+	
+8. 후처리를 위한 SecurityConfig에 설정
+    - 위에서 생성한 거 등록
+    
+	@Autowired
+	private PrincipalOauth2UserService principalOauth2UserService;
+
+
+    .and()
+			.oauth2Login()
+			.loginPage("/loginForm") //여기까지만 하면 구글 로그인 기능은 완료되나 구글 로그인이 완료된뒤 권한에 대한 후처리가 필요함
+			// 구글 로그인이 완료된 뒤에 후처리가 필요함 1. 코드받기(인증) 2.엑세스 토큰(권한) 3.사용자 프로필 정보를 가져오고 
+			// 4-1 그 정보를 토대로 회원가입을 자동으로 진행시키기도 함
+			// 4-2 (이메일,전화번호,이름,아이디)쇼핑몰 -> (집주소), 백화점 -> VIP등급
+			// 구글 로그인이 완료된 뒤의 후처리로 코드를 받는 것이 아니라 (액세스토큰+사용자프로필을 한방에 받게 된다)
+			// 이것이 OAuth의 개편함이다
+			.userInfoEndpoint()
+			.userService(principalOauth2UserService); // 서비스를 등록해줌
+			
+9. 7에서 나온 결과값으로 강제 회원가입을 시킬 예정임
+ // 결과값은 직접 확인해 봐야 함 보안때문에 할수없음
+super.loadUser(userRequest).getAttributes : 
+{
+	sub=보안, 
+	name=보안, 
+	given_name=보안, 
+	family_name=보안, 
+	picture=보안, 
+	email=보안, 
+	email_verified=true, 
+    locale=ko
+}
+
+userRequest.getClientRegistration()의 registrationId='google' 값으로 어디서 로그인 했는지 알수 있음
+userRequest.getClientRegistration().getRegistrationId();
+
+강제 회원가입을 위해 사용할 내용
+username=google_sub의 내용을 조합
+password =  "내가좋아하는 암호 넣기 ㅋㅋ"
+email = 로그인자 email
+role=ROLE_USER
+provider = "google"
+providetid = sub의 내용이 들어감,
+
+==> 이렇게 구성한다면 기존 model에 User에 추가 구성 필요함
+	// OAuth를 위해 구성한 추가 필드 2개
+	private String provider;
+	private String providerId;
+	
+10. public class PrincipalDetails implements UserDetails, OAuth2User{ // 이렇게 일반 로그인과 oauth로그인을 둘다 품고 있어야 한다
+	.
+	.
+	.	
+	///////////////////////////////////////////////////////////////////////
+	// OAuth2User를 implement 하면서 override 해야하는 함수 두가지임
+	@Override
+	public Map<String, Object> getAttributes() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public String getName() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+	///////////////////////////////////////////////////////////////////////
+}
+    
+    이때 OAuth2User 두가지 함수를 override 해야함
+    첫번째 override인 getAttributes는 아래 정보가 있음
+    oauth2User : {
+    sub=보안, 
+    name=보안, 
+    given_name=보안, 
+    family_name=보안, 
+    picture=보안, 
+    email=보안, 
+    email_verified=true, 
+    locale=ko
+    }
+    위 정보가 
+    Map<String, Object>으로 들어 있음
+    
+11. 10번의 override 내용 수정
+
+    // 이부분은 OAuth로그인 정보를 담을 그룻이 됩니다
+	private Map<String, Object> attributes;
+	
+	//OAuth 로그인용 생성자
+	public PrincipalDetails(User user, Map<String, Object> attributes) {
+				//super();
+			this.user = user; //OAuth 로그인을 했을때는 Map<String, Object> attributes 이 정보로 user 정보를 만들어서 넣어줄 것임
+			this.attributes = attributes;
+	}
+//////////////////////////////////////////////////////////////////////
+	// OAuth2User를 implement 하면서 override 해야하는 함수 두가지임
+	@Override
+	public Map<String, Object> getAttributes() {
+		// TODO Auto-generated method stub
+		return attributes;
+	}
+
+	@Override
+	public String getName() {
+		//return attributes.get("sub"); 안중요함 안쓸 것임
+		return null;
+		
+	}
+	///////////////////////////////////////////////////////////////////////
+ 
+ 12. 강제 회원 가입 진행
+@Service
+public class PrincipalOauth2UserService extends DefaultOAuth2UserService {
+// 구글 로그인 패스워드 강제 인코딩 비밀번호를 강제로 박아줌
+	@Autowired
+	private BCryptPasswordEncoder bCryptPasswordEncoder;
+	
+	// 이미 가입된 구글 사용자인지 확인을 위한 검색 처리를 위해 @Autowired
+	@Autowired
+	private UserRepository userRepository;
+	
+	// 구글로 부터 받은 userRequest 데이터에 대한 후처리 함수
+	@Override
+	public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
+		//System.out.println("PrincipalOauth2UserService의 loadUser()의 userRequest : " + userRequest);
+		System.out.println("PrincipalOauth2UserService의 loadUser()의 userRequest의 getClientRegistration : " + userRequest.getClientRegistration()); // getClientRegistration 정보의 registrationId로 어떤 OAuth로 로그인 했는지 확인가능함 구글인지 페이스북인지 등
+		
+		
+		//AccessToken은 필요가 없다 왜냐하면 이미 oauth 라이브러리가 AccessToken으로 사용자 정보를 가져온다
+		System.out.println("PrincipalOauth2UserService의 loadUser()의 userRequest의 getAccessToken : " + userRequest.getAccessToken());
+		
+		
+		OAuth2User oauth2User = super.loadUser(userRequest);
+		///구글로그인 버튼 클릭 -> 구글로그인창 -> 로그인 완료 -> code를 return(OAuth-Client 라이브러리가 해줌-개편함)->code를 통해 Access Token 요청
+		// -> userRequest 정보 -> 회원 프로필 받아야함 이게 바로 loadUser함수임 호출-> 호출뒤 구글로 부터 회원프로필을 받음
+		//엑세스 토큰과 사용자 정보를 모두 가지고 있는 것이 아래 것임
+		System.out.println("PrincipalOauth2UserService의 super.loadUser(userRequest)의 getAttributes: " + super.loadUser(userRequest).getAttributes()); // 해당 정보의 getAttributes로 강제 회원가입할 것임
+		System.out.println("PrincipalOauth2UserService의 oAuth2User의 getAttributes: " + oauth2User.getAttributes());
+		//위 아래 결과값 동일: 
+		
+	    // super.loadUser(usgerRequest)로 강제 회원가입을 진행
+		String provider = userRequest.getClientRegistration()..getRegistrationId(); //google
+		String providerId = oauth2User.getAttribute("sub");
+		String username = provider+"_"+providerId; 
+		String password = bCryptPasswordEncoder.encode("bacboy5604");
+		String email = oauth2User.getAttribute("email");
+		String role = "ROLE_USER";
+		
+		User userEntity = userRepository.findByUsername(username);
+		
+		if (userEntity == null) {
+			System.out.println("구글 로그인 최초인 사용자로 강제 회원가입을 진행합니다");
+			userEntity =User.builder()
+					.username(username)
+					.password(password)
+					.email(email)
+					.role(role)
+					.provider(providerId)
+					.provider(providerId)
+					.build();
+			//user 강제 가입
+			userRepository.save(userEntity);
+		} else {
+			System.out.println("구글 로그인을 이미 한적이 있는 사용자로 강제(자동) 회원가입을 하지 않습니다.");
+			//null 이 아니면 이미 구글로 가입된 사용자 임
+		}
+		
+	    // 원래는 아래가 리턴 되던 것이엇지만
+		// return super.loadUser(userRequest);
+		// 지금은 아래것으로 리턴함 왜냐하면 OAuth2User를 PrincipalDetails에 implement 했기때문에 리턴이 가능해짐
+		// 결국은 PrincipalDetails(userEntity, oauth2User.getAttributes() 이것이 PrincipalDetails의 생성자에 의해
+		// 만들어진뒤 Athentication 세션 객체안에 쏙 들어갈 것이고 
+		// 우리는 Controller에서 이것에 접근해서 user 정보를 가져오면 된다
+		return new PrincipalDetails(userEntity, oauth2User.getAttributes());
+	}
+}
+
+13. Controller에서 잘 넘어 왔는지 테스트   
+	// 일반적인 로그인을 해도 PrincipalDetails
+	// OAuth 로그인을 해도 PrincipalDetails
+	// @AuthenticationPrincipal 이 어노테이션 만으로 접근 가능해짐
+	// 해당 어노테이션의 활성화 되는 시점은 
+	// 너무 편함 따로 분기할 필요가 없어 졌음
+	@GetMapping("/user")
+	public @ResponseBody String user(@AuthenticationPrincipal PrincipalDetails principalDetails) {
+		System.out.println("PrincipalDetails : " + principalDetails.getUser());
+		return "user";
+	
+	}
+==================================================================================================
+SpringBoot 4.11.0
+
+Ecipse web 플러그인 마켓에서 설치
+
+lombok 설치
+
+java openjdk 11 그러나 부트 4.11은 기본적으로 16버전 내부에 탑재하였음
+
+mysql 8.0.17 사용
+
+==================================================
+
+spring security bean으로 설정해서 사용하였음
+
+==================================================
+
+시큐리티 원리정리
+
+시큐리티 로그인(/loginProc) -> 로그인 버튼 눌러서 SecurityConfig에서 설정한 loginProcessingUrl("/loginProc") 로 들어오면
+
+시큐리티가 해당 주소를 가로채서 PrincipalDetailsService의  loadUserByUsername(String username) 함수를 싷행하는데
+
+이는 UserRepository에 있는 findByUsername 함수를 통해서 해당 유저가 있는지 찾아서 잇다면
+
+new PrincipalDetails(userEntity)를 리턴한다 
+
+이 리턴 되는 PrincipalDetails는 UserDetails를 Implement 하여
+
+여기서 구성된 모든 user정보는 시큐리티 세션 영역에 있는 Authentication 객체에 담기게 된다 
+
